@@ -17,9 +17,13 @@ pub const Signature = struct {
     const Self = @This();
 
     pub fn init(bytes: [SIGNATURE_LENGTH]u8) Self {
-        return Self{
+        return .{
             .data = bytes,
         };
+    }
+
+    pub fn default() Self {
+        return .{};
     }
 
     pub fn verify(self: Self, pubkey: Pubkey, msg: []const u8) bool {
