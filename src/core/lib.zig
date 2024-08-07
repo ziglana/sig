@@ -27,5 +27,4 @@ pub const Transaction = transaction.Transaction;
 pub const VersionedTransaction = transaction.VersionedTransaction;
 pub const V0Message = transaction.V0Message;
 
-pub const SIGNATURE_LENGTH = signature.SIGNATURE_LENGTH;
 pub const HASH_SIZE = hash.HASH_SIZE;

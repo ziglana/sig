@@ -15,7 +15,7 @@ const Slot = sig.core.Slot;
 const checkedAdd = sig.utils.math.checkedAdd;
 const checkedSub = sig.utils.math.checkedSub;
 
-const SIGNATURE_LENGTH = sig.core.SIGNATURE_LENGTH;
+const SIGNATURE_LENGTH = sig.core.Signature.BYTES_LENGTH;
 
 pub const MAX_SHREDS_PER_SLOT: usize = coding_shred.max_per_slot + data_shred.max_per_slot;
 
@@ -996,7 +996,7 @@ pub const layout = struct {
     pub const SIZE_OF_COMMON_SHRED_HEADER: usize = 83;
     pub const SIZE_OF_DATA_SHRED_HEADERS: usize = 88;
     pub const SIZE_OF_CODING_SHRED_HEADERS: usize = 89;
-    pub const SIZE_OF_SIGNATURE: usize = sig.core.SIGNATURE_LENGTH;
+    pub const SIZE_OF_SIGNATURE: usize = sig.core.Signature.BYTES_LENGTH;
     pub const SIZE_OF_SHRED_VARIANT: usize = 1;
     pub const SIZE_OF_SHRED_SLOT: usize = 8;
 
@@ -1038,7 +1038,7 @@ pub const layout = struct {
         if (shred.len < SIGNATURE_LENGTH) {
             return null;
         }
-        return Signature.init(shred[0..SIZE_OF_SIGNATURE].*);
+        return Signature.fromBytes(shred[0..SIZE_OF_SIGNATURE]) catch null;
     }
 
     pub fn getSignedData(shred: []const u8) ?Hash {
