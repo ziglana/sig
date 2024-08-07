@@ -679,31 +679,18 @@ pub fn transactionForwardingServiceTest() !void {
 
     const channel = Channel(TransactionInfo).init(gpa_allocator, 100);
 
-    const transaction_generator_thread = try std.Thread.spawn(
+    const transaction_forwarding_thread = try std.Thread.spawn(
         .{},
-        sig.transaction_forwarding_service.mockTransactionGenerator,
+        sig.transaction_forwarding_service.run,
         .{
-            gpa_allocator,
+            &gossip_service.gossip_table_rw,
             channel,
             &app_base.exit,
         },
     );
 
-    // const transaction_forwarding_thread = try std.Thread.spawn(
-    //     .{},
-    //     sig.transaction_forwarding_service.run,
-    //     .{
-    //         &gossip_service.gossip_table_rw,
-    //         channel,
-    //         &app_base.exit,
-    //     },
-    // );
-
-    transaction_generator_thread.join();
-    // transaction_forwarding_thread.join();
+    transaction_forwarding_thread.join();
     gossip_manager.join();
-
-    _ = gossip_service;
 }
 
 /// State that typically needs to be initialized at the start of the app,

@@ -20,7 +20,7 @@ const SIGNATURE_LENGTH = sig.core.Signature.BYTES_LENGTH;
 pub const MAX_SHREDS_PER_SLOT: usize = coding_shred.max_per_slot + data_shred.max_per_slot;
 
 pub const DATA_SHREDS_PER_FEC_BLOCK: usize = 32;
-const SIZE_OF_MERKLE_ROOT: usize = sig.core.HASH_SIZE;
+const SIZE_OF_MERKLE_ROOT: usize = sig.core.Hash.BYTES_LENGTH;
 
 pub const coding_shred = ShredConstants{
     .max_per_slot = 32_768,

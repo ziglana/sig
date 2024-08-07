@@ -1,53 +1,69 @@
 const std = @import("std");
-const Sha256 = std.crypto.hash.sha2.Sha256;
 const base58 = @import("base58-zig");
-const Allocator = std.mem.Allocator;
+const Sha256 = std.crypto.hash.sha2.Sha256;
 
-pub const HASH_SIZE: usize = 32;
+const BASE58_ENCODER = base58.Encoder.init(.{});
+const BASE58_DECODER = base58.Decoder.init(.{});
 
 pub const Hash = extern struct {
-    data: [HASH_SIZE]u8,
+    data: [BYTES_LENGTH]u8,
 
-    pub fn fromSizedSlice(data: *const [HASH_SIZE]u8) Hash {
+    pub const BYTES_LENGTH: usize = 32;
+    pub const BASE58_LENGTH: usize = 44;
+
+    const Self = @This();
+
+    pub fn init(bytes: [BYTES_LENGTH]u8) Self {
+        return Self{ .data = bytes };
+    }
+
+    pub fn default() Self {
+        return Self{ .data = [_]u8{0} ** BYTES_LENGTH };
+    }
+
+    pub fn random(rng: std.rand.Random) Self {
+        var bytes: [BYTES_LENGTH]u8 = undefined;
+        rng.bytes(&bytes);
+        return Self{ .data = bytes };
+    }
+
+    pub fn fromBytes(bytes: []const u8) !Self {
+        if (bytes.len != BYTES_LENGTH) {
+            return Error.InvalidBytesLength;
+        }
+        return Self{ .data = bytes[0..BYTES_LENGTH].* };
+    }
+
+    pub fn fromSizedSlice(data: *const [BYTES_LENGTH]u8) Hash {
         var hash: Hash = undefined;
         @memcpy(&hash.data, data);
         return hash;
     }
 
-    pub fn default() Hash {
-        return .{ .data = .{0} ** HASH_SIZE };
-    }
-
-    pub fn generateSha256Hash(bytes: []const u8) Hash {
-        var data: [HASH_SIZE]u8 = undefined;
-        Sha256.hash(bytes, &data, .{});
-        return .{ .data = data };
-    }
-
-    pub fn extendAndHash(id: Hash, val: []const u8) Hash {
-        var hasher = Sha256.init(.{});
-        hasher.update(&id.data);
-        hasher.update(val);
-        return .{ .data = hasher.finalResult() };
-    }
-
-    pub fn eql(self: Hash, other: Hash) bool {
-        return self.order(&other) == .eq;
-    }
-
-    pub fn order(a: *const Hash, b: *const Hash) std.math.Order {
-        for (a.data, b.data) |a_byte, b_byte| {
-            if (a_byte > b_byte) return .gt;
-            if (a_byte < b_byte) return .lt;
+    pub fn fromString(encoded: []const u8) !Self {
+        var dest: [BYTES_LENGTH]u8 = undefined;
+        const written = BASE58_DECODER.decode(encoded, &dest) catch return error.DecodingError;
+        if (written != BYTES_LENGTH) {
+            return error.DecodingError;
         }
-        return .eq;
+        return Self.fromBytes(&dest);
+    }
+
+    pub fn toString(self: *const Self) error{EncodingError}![BASE58_LENGTH]u8 {
+        var dest: [BASE58_LENGTH]u8 = undefined;
+        @memset(&dest, 0);
+        const written = BASE58_ENCODER.encode(&self.data, &dest) catch return error.EncodingError;
+        if (written > BASE58_LENGTH) {
+            std.debug.panic("written is > {}, written: {}, dest: {any}, bytes: {any}", .{ BASE58_LENGTH, written, dest, self.data });
+        }
+        return dest;
     }
 
     pub fn parseBase58String(str: []const u8) error{InvalidHash}!Hash {
-        var result_data: [HASH_SIZE]u8 = undefined;
+        var result_data: [BYTES_LENGTH]u8 = undefined;
         const b58_decoder = comptime base58.Decoder.init(.{});
         const encoded_len = b58_decoder.decode(str, &result_data) catch return error.InvalidHash;
-        if (encoded_len != HASH_SIZE) return error.InvalidHash;
+        if (encoded_len != BYTES_LENGTH) return error.InvalidHash;
         return .{ .data = result_data };
     }
 
@@ -64,7 +80,7 @@ pub const Hash = extern struct {
         return writer.writeAll(b58_str_bounded.constSlice());
     }
 
-    pub fn base58EncodeAlloc(self: Hash, allocator: Allocator) Allocator.Error![]const u8 {
+    pub fn base58EncodeAlloc(self: Hash, allocator: std.mem.Allocator) std.mem.Allocator.Error![]const u8 {
         const buf = try allocator.alloc(u8, 44);
         const size = self.base58EncodeToSlice(buf[0..44]);
         std.debug.assert(size <= 44);
@@ -78,10 +94,27 @@ pub const Hash = extern struct {
         return size;
     }
 
-    /// Intended to be used in tests.
-    pub fn random(rand: std.Random) Hash {
-        var data: [HASH_SIZE]u8 = undefined;
-        rand.bytes(&data);
+    pub fn generateSha256Hash(bytes: []const u8) Self {
+        var data: [BYTES_LENGTH]u8 = undefined;
+        Sha256.hash(bytes, &data, .{});
         return .{ .data = data };
     }
+
+    pub fn extendAndHash(self: Self, val: []const u8) Self {
+        var hasher = Sha256.init(.{});
+        hasher.update(&self.data);
+        hasher.update(val);
+        return .{ .data = hasher.finalResult() };
+    }
+
+    pub fn order(a: *const Self, b: *const Self) std.math.Order {
+        for (a.data, b.data) |a_byte, b_byte| {
+            if (a_byte > b_byte) return .gt;
+            if (a_byte < b_byte) return .lt;
+        }
+        return .eq;
+    }
 };
+
+/// TODO: InvalidEncodedLength and InvalidEncodedValue are not used
+const Error = error{ InvalidBytesLength, InvalidEncodedLength, InvalidEncodedValue };

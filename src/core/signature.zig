@@ -5,8 +5,8 @@ const Ed25519 = std.crypto.sign.Ed25519;
 const Verifier = std.crypto.sign.Ed25519.Verifier;
 const e = std.crypto.errors;
 
-const BASE_58_ENCODER = base58.Encoder.init(.{});
-const BASE_58_DECODER = base58.Decoder.init(.{});
+const BASE58_ENCODER = base58.Encoder.init(.{});
+const BASE58_DECODER = base58.Decoder.init(.{});
 
 pub const Signature = struct {
     data: [BYTES_LENGTH]u8,
@@ -33,17 +33,17 @@ pub const Signature = struct {
 
     pub fn fromString(encoded: []const u8) error{DecodingError}!Self {
         var dest: [BYTES_LENGTH]u8 = undefined;
-        const written = BASE_58_DECODER.decode(encoded, &dest) catch return error.DecodingError;
+        const written = BASE58_DECODER.decode(encoded, &dest) catch return error.DecodingError;
         if (written != BYTES_LENGTH) {
             return error.DecodingError;
         }
         return Self.init(dest);
     }
 
-    pub fn toString(self: *const Signature) error{EncodingError}![BASE58_LENGTH]u8 {
+    pub fn toString(self: *const Self) error{EncodingError}![BASE58_LENGTH]u8 {
         var dest: [BASE58_LENGTH]u8 = undefined;
         @memset(&dest, 0);
-        const written = BASE_58_ENCODER.encode(&self.data, &dest) catch return error.EncodingError;
+        const written = BASE58_ENCODER.encode(&self.data, &dest) catch return error.EncodingError;
         if (written > BASE58_LENGTH) {
             std.debug.panic("written is > {}, written: {}, dest: {any}, bytes: {any}", .{ BASE58_LENGTH, written, dest, self.data });
         }

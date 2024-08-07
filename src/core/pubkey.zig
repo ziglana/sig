@@ -51,7 +51,7 @@ pub const Pubkey = extern struct {
         return Self.fromBytes(&dest);
     }
 
-    pub fn toString(self: *const Pubkey) error{EncodingError}![BASE58_LENGTH]u8 {
+    pub fn toString(self: *const Self) error{EncodingError}![BASE58_LENGTH]u8 {
         var dest: [BASE58_LENGTH]u8 = undefined;
         @memset(&dest, 0);
         const written = BASE58_ENCODER.encode(&self.data, &dest) catch return error.EncodingError;
@@ -68,7 +68,7 @@ pub const Pubkey = extern struct {
         return writer.print("{s}", .{dest[0..written]}) catch unreachable;
     }
 
-    pub fn eql(self: *const Self, other: *const Pubkey) bool {
+    pub fn eql(self: *const Self, other: *const Self) bool {
         const xx: @Vector(BYTES_LENGTH, u8) = self.data;
         const yy: @Vector(BYTES_LENGTH, u8) = other.data;
         const r = @reduce(.And, xx == yy);
