@@ -10,8 +10,8 @@ const BASE58_DECODER = base58.Decoder.init(.{});
 pub const Pubkey = extern struct {
     data: [BYTES_LENGTH]u8,
 
-    const BYTES_LENGTH: usize = 32;
-    const BASE58_LENGTH: usize = 44;
+    pub const BYTES_LENGTH: usize = 32;
+    pub const BASE58_LENGTH: usize = 44;
 
     pub const @"!bincode-config:data" = U8ArrayConfig(32);
 
