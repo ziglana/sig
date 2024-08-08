@@ -407,7 +407,7 @@ pub const CompileError = error{
     UnknownInstructionKey,
 };
 
-const SYSTEM_PROGRAM_ID = Pubkey.init([_]u8{1} ** Pubkey.BYTES_LENGTH);
+const SYSTEM_PROGRAM_ID = Pubkey.init([_]u8{0} ** Pubkey.BYTES_LENGTH);
 
 const SystemInstruction = union(enum(u8)) {
     CreateAccount,
