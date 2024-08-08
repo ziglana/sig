@@ -12,7 +12,7 @@ pub const Signature = struct {
     data: [BYTES_LENGTH]u8,
 
     pub const BYTES_LENGTH: usize = 64;
-    pub const BASE58_LENGTH: usize = 88;
+    pub const BASE58_MAX_LENGTH: usize = 88;
 
     const Self = @This();
 
@@ -40,14 +40,24 @@ pub const Signature = struct {
         return Self.init(dest);
     }
 
-    pub fn toString(self: *const Self) error{EncodingError}![BASE58_LENGTH]u8 {
-        var dest: [BASE58_LENGTH]u8 = undefined;
+    pub fn toString(self: *const Self) error{EncodingError}![BASE58_MAX_LENGTH]u8 {
+        var dest: [BASE58_MAX_LENGTH]u8 = undefined;
         @memset(&dest, 0);
         const written = BASE58_ENCODER.encode(&self.data, &dest) catch return error.EncodingError;
-        if (written > BASE58_LENGTH) {
-            std.debug.panic("written is > {}, written: {}, dest: {any}, bytes: {any}", .{ BASE58_LENGTH, written, dest, self.data });
+        if (written > BASE58_MAX_LENGTH) {
+            std.debug.panic("written is > {}, written: {}, dest: {any}, bytes: {any}", .{ BASE58_MAX_LENGTH, written, dest, self.data });
         }
         return dest;
+    }
+
+    pub fn toStringAlloc(self: *const Self, allocator: std.mem.Allocator) ![]u8 {
+        var dest: [BASE58_MAX_LENGTH]u8 = undefined;
+        @memset(&dest, 0);
+        const written = BASE58_ENCODER.encode(&self.data, &dest) catch return error.EncodingError;
+        if (written > BASE58_MAX_LENGTH) {
+            std.debug.panic("written is > {}, written: {}, dest: {any}, bytes: {any}", .{ BASE58_MAX_LENGTH, written, dest, self.data });
+        }
+        return try allocator.dupe(u8, dest[0..written]);
     }
 
     pub fn verify(self: Self, pubkey: Pubkey, msg: []const u8) bool {
