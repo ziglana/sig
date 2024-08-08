@@ -497,6 +497,9 @@ pub const Client = struct {
         defer client.http_client.deinit();
         var leader_schedule = try client.getLeaderSchedule(allocator, .{});
         defer {
+            for (leader_schedule.keys()) |key| {
+                allocator.free(key);
+            }
             for (leader_schedule.values()) |slots| {
                 allocator.free(slots);
             }
