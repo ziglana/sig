@@ -1,5 +1,6 @@
 const std = @import("std");
 const network = @import("zig-network");
+const base58 = @import("base58-zig");
 const sig = @import("../lib.zig");
 
 const socket_utils = sig.net.socket_utils;
@@ -30,6 +31,8 @@ const RpcLeaderSchedule = sig.rpc.Client.LeaderSchedule;
 const RpcLatestBlockhash = sig.rpc.Client.LatestBlockhash;
 const LeaderSchedule = sig.core.leader_schedule.SingleEpochLeaderSchedule;
 const Logger = sig.trace.log.Logger;
+
+const BASE58_ENCODER = base58.Encoder.init(.{});
 
 const NUM_CONSECUTIVE_LEADER_SLOTS = sig.core.leader_schedule.NUM_CONSECUTIVE_LEADER_SLOTS;
 
@@ -283,6 +286,8 @@ fn sendTransactions(
     };
     defer allocator.free(leader_addresses);
 
+    // var client = RpcClient.init(allocator, "https://api.testnet.solana.com");
+
     // const wire_transactions = try allocator.alloc([sig.net.packet.PACKET_DATA_SIZE]u8, transactions.len);
     // defer allocator.free(wire_transactions);
 
@@ -290,15 +295,28 @@ fn sendTransactions(
     //     wire_transactions[i] = tx.wire_transaction;
     // }
 
+    // _ = channel;
+
     std.debug.print("Sending {} transactions to {} leaders\n", .{ transactions.len, leader_addresses.len });
-    for (transactions) |tx| {
-        std.debug.print("Transaction: {any}\n", .{tx});
-    }
+    // for (transactions) |tx| {
+    //     std.debug.print("Transaction: {any}\n", .{tx});
+    // }
 
     for (leader_addresses) |leader_address| {
         std.debug.print("Sending transactions to {}\n", .{leader_address});
+        // for (transactions) |tx| {
+        //     std.debug.print("Transaction: {any}\n", .{tx});
+        //     const transaction_base58 = try BASE58_ENCODER.encodeAlloc(allocator, tx.wire_transaction[0..tx.wire_transaction_size]);
+        //     defer allocator.free(transaction_base58);
+        //     std.debug.print("Transaction Base58: {s}\n", .{transaction_base58});
+        //     const signature = try client.sendTransaction(allocator, .{
+        //         .transaction = transaction_base58,
+        //     });
+        //     std.debug.print("Transaction Signature: {s}\n", .{try signature.toString()});
+        // }
         var packets = try std.ArrayList(Packet).initCapacity(allocator, transactions.len);
         for (transactions) |tx| {
+            std.debug.print("Last valid block height: {}\n", .{tx.last_valid_block_height});
             try packets.append(Packet.init(leader_address.toEndpoint(), tx.wire_transaction, tx.wire_transaction_size));
         }
         try channel.send(
@@ -506,23 +524,28 @@ const ServiceInfo = struct {
         defer rpc_client.deinit();
         const slot = try rpc_client.getSlot(self.allocator);
 
-        const slots_elapsed = (try self.epoch_info_instant.elapsed()).asMillis() / 400;
+        // const slots_elapsed = (try self.epoch_info_instant.elapsed()).asMillis() / 400;
 
-        const slot_index = self.epoch_info.slotIndex + slots_elapsed + n;
+        // const slot_index = self.epoch_info.slotIndex + slots_elapsed + n;
+        _ = n;
 
-        std.debug.assert(slot_index < self.leader_schedule.slot_leaders.len);
-        std.debug.print("N:                         {}\n", .{n});
+        const start_index = self.epoch_info.absoluteSlot - self.epoch_info.slotIndex;
+        const slot_index = slot - start_index;
+
+        // std.debug.assert(slot_index < self.leader_schedule.slot_leaders.len);
+        // std.debug.print("N:                         {}\n", .{n});
         std.debug.print("Rpc Slot:                  {}\n", .{slot});
-        std.debug.print("Slot After N:              {}\n", .{self.epoch_info.absoluteSlot + slots_elapsed + n});
+        std.debug.print("Slot Index:                {}\n", .{slot_index});
+        // std.debug.print("Slot After N:              {}\n", .{self.epoch_info.absoluteSlot + slots_elapsed + n});
         // std.debug.print("Approximate Slot Index:    {}\n", .{self.epoch_info.slotIndex + slots_elapsed});
         // std.debug.print("Approximate Absolute Slot: {}\n", .{self.epoch_info.absoluteSlot + slots_elapsed});
         // std.debug.print("Epoch Info Slot Index:     {}\n", .{self.epoch_info.slotIndex});
         // std.debug.print("Epoch Info Absolute Slot:  {}\n", .{self.epoch_info.absoluteSlot});
         // std.debug.print("Approximate Slots Elapsed: {}\n", .{slots_elapsed});
-        std.debug.print("EpochInfo: {any}\n", .{self.epoch_info});
-        std.debug.print("Leader Schedule Start: {any}\n", .{self.leader_schedule.start_slot});
+        // std.debug.print("EpochInfo: {any}\n", .{self.epoch_info});
+        // std.debug.print("Leader Schedule Start: {any}\n", .{self.leader_schedule.start_slot});
 
-        return self.leader_schedule.slot_leaders[slot_index];
+        return self.leader_schedule.slot_leaders[slot_index + 64];
     }
 
     fn fetchLeaderSchedule(allocator: Allocator, rpc_client: *RpcClient) !LeaderSchedule {
