@@ -16,7 +16,7 @@ pub const SlotLeaderProvider = sig.utils.closure.PointerClosure(Slot, ?Pubkey);
 
 /// Only works for a single epoch. This is a basic limited approach that should
 /// only be used as a placeholder until a better approach is fleshed out.
-pub const SingleEpochLeaderSchedule = struct {
+pub const LeaderSchedule = struct {
     allocator: Allocator,
     slot_leaders: []const sig.core.Pubkey,
     start_slot: Slot,
@@ -37,7 +37,7 @@ pub const SingleEpochLeaderSchedule = struct {
     }
 };
 
-pub fn leaderScheduleFromBank(allocator: Allocator, bank: *const Bank) !SingleEpochLeaderSchedule {
+pub fn leaderScheduleFromBank(allocator: Allocator, bank: *const Bank) !LeaderSchedule {
     const epoch = bank.bank_fields.epoch;
     const epoch_stakes = bank.bank_fields.epoch_stakes.getPtr(epoch) orelse return error.NoEpochStakes;
     const slots_in_epoch = bank.bank_fields.epoch_schedule.getSlotsInEpoch(epoch);
@@ -47,7 +47,7 @@ pub fn leaderScheduleFromBank(allocator: Allocator, bank: *const Bank) !SingleEp
 
     _, const slot_index = bank.bank_fields.epoch_schedule.getEpochAndSlotIndex(bank.bank_fields.slot);
     const epoch_start_slot = bank.bank_fields.slot - slot_index;
-    return SingleEpochLeaderSchedule{
+    return LeaderSchedule{
         .allocator = allocator,
         .slot_leaders = slot_leaders,
         .start_slot = epoch_start_slot,
@@ -110,7 +110,7 @@ pub fn leaderSchedule(
     return slot_leaders;
 }
 
-pub fn writeLeaderSchedule(sched: SingleEpochLeaderSchedule, writer: anytype) !void {
+pub fn writeLeaderSchedule(sched: LeaderSchedule, writer: anytype) !void {
     for (sched.slot_leaders, 0..) |leader, i| {
         try writer.print("  {}       {s}\n", .{ i + sched.start_slot, &(try leader.toString()) });
     }
@@ -121,7 +121,7 @@ pub fn writeLeaderSchedule(sched: SingleEpochLeaderSchedule, writer: anytype) !v
 pub fn parseLeaderSchedule(
     allocator: std.mem.Allocator,
     reader: anytype,
-) !SingleEpochLeaderSchedule {
+) !LeaderSchedule {
     var slot_leaders = std.ArrayList(Pubkey).init(allocator);
     var start_slot: Slot = 0;
     var expect: ?Slot = null;

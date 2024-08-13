@@ -406,7 +406,7 @@ pub const Client = struct {
         return error.RpcRequestFailed;
     }
 
-    const Cluster = enum {
+    pub const Cluster = enum {
         Mainnet,
         Testnet,
         Devnet,
