@@ -140,6 +140,7 @@ fn receiveTransactionsThread(
                 config,
                 cluster_info_rw,
                 transaction_batch.values(),
+                logger,
             );
             last_batch_sent = try Instant.now();
 
@@ -149,7 +150,7 @@ fn receiveTransactionsThread(
             logger.infof("Adding {d} new transactions to pool.", .{transaction_batch.count()});
             for (transaction_batch.values()) |_tx| {
                 if (transaction_pool.count() >= config.pool_max_size) {
-                    logger.warnf("Transaction pool is full, dropping transaction: signature={s}", .{_tx.signature});
+                    logger.warnf("Transaction pool is full, dropping transaction: signature={s}", .{try _tx.signature.toString()});
                     continue;
                 }
                 var tx = _tx; // Is there a nicer way to do this?
@@ -281,10 +282,10 @@ fn processTransactions(
     logger.infof(
         "Processed {d} transactions: {d} successful, {d} retry, {d} drop",
         .{
-            successful_signatures.len + retry_signatures.len + drop_signatures.len,
-            successful_signatures.len,
-            retry_signatures.len,
-            drop_signatures.len,
+            successful_signatures.items.len + retry_signatures.items.len + drop_signatures.items.len,
+            successful_signatures.items.len,
+            retry_signatures.items.len,
+            drop_signatures.items.len,
         },
     );
 

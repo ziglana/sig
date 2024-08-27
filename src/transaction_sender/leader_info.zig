@@ -31,7 +31,7 @@ const RpcLeaderSchedule = sig.rpc.Client.LeaderSchedule;
 const RpcLatestBlockhash = sig.rpc.Client.LatestBlockhash;
 const LeaderSchedule = sig.core.leader_schedule.LeaderSchedule;
 const Logger = sig.trace.log.Logger;
-const RpcCluster = sig.rpc.Client.Cluster;
+const ClusterType = sig.accounts_db.genesis_config.ClusterType;
 const Config = sig.transaction_sender.Config;
 const TransactionInfo = sig.transaction_sender.TransactionInfo;
 
@@ -48,7 +48,7 @@ pub const LeaderInfo = struct {
 
     pub fn init(
         allocator: Allocator,
-        cluster: RpcCluster,
+        cluster: ClusterType,
         gossip_table_rw: *RwMux(GossipTable),
     ) !LeaderInfo {
         var rpc_client = RpcClient.init(allocator, cluster);
@@ -91,7 +91,7 @@ pub const LeaderInfo = struct {
         if (current_slot > self.epoch_info.slotsInEpoch + self.leader_schedule.start_slot) {
             self.epoch_info = try rpc_client.getEpochInfo(&rpc_arena, null, .{ .commitment = .processed });
             self.leader_schedule = try getLeaderSchedule(allocator, &self.epoch_info, &rpc_client);
-            self.updateLeaderAddressesCache();
+            try self.updateLeaderAddressesCache();
         }
 
         var leader_addresses = std.ArrayList(SocketAddr).init(allocator);
