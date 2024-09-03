@@ -104,7 +104,7 @@ jobs:
           version: 0.13.0
 
       - name: benchmarks 
-        run: zig build -Doptimize=ReleaseSafe benchmark
+        run: zig build -Doptimize=ReleaseSafe benchmark -- all --telemetry=$GITHUB_SHA
 
   gossip:
     strategy:
