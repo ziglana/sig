@@ -88,6 +88,8 @@ jobs:
           python scripts/parse_kcov.py kcov-output/test/coverage.json
 
   benchmarks:
+    # only run the benchmarks on main to not block merging and make telemetry data consistent
+    if: github.ref == 'refs/head/main' 
     strategy:
       matrix:
         os: [ubuntu-latest]
