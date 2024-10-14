@@ -12,6 +12,7 @@ pub const Config = struct {
     shred_collector: ShredCollectorConfig = shred_collector_defaults,
     accounts_db: AccountsDBConfig = .{},
     geyser: GeyserConfig = .{},
+    turbine: TurbineConfig = .{},
 
     max_shreds: u64 = 1_000,
     leader_schedule_path: ?[]const u8 = null,
@@ -132,3 +133,7 @@ pub const GeyserConfig = struct {
 };
 
 const LogConfig = struct {};
+
+pub const TurbineConfig = struct {
+    num_retransmit_sockets: u8 = 1,
+};
