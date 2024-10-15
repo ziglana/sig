@@ -135,5 +135,6 @@ pub const GeyserConfig = struct {
 const LogConfig = struct {};
 
 pub const TurbineConfig = struct {
-    num_retransmit_sockets: u8 = 1,
+    num_retransmit_sockets: usize = 1,
+    num_retransmit_threads: ?usize = null,
 };
