@@ -3435,7 +3435,7 @@ fn localhostTestContactInfo(id: Pubkey) !ContactInfo {
     return contact_info;
 }
 
-// test "benchmarkPullRequests" { 
+// test "benchmarkPullRequests" {
 //     _ = try BenchmarkGossipServicePullRequests.benchmarkPullRequests(.{
 //         .name = "1k_data_1k_pull_reqs",
 //         .n_data_populated = 10,
@@ -3443,7 +3443,7 @@ fn localhostTestContactInfo(id: Pubkey) !ContactInfo {
 //     });
 // }
 
-// test "benchmarkGossipService" { 
+// test "benchmarkGossipService" {
 //     _ = try BenchmarkGossipServiceGeneral.benchmarkGossipService(.{
 //         .message_counts = .{
 //             .n_ping = 10,
