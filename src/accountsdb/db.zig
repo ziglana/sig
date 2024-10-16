@@ -4063,7 +4063,7 @@ pub const BenchmarkAccountsDBSnapshotLoad = struct {
 
 pub const BenchmarkAccountsDB = struct {
     pub const min_iterations = 1;
-    pub const max_iterations = 10;
+    pub const max_iterations = 500;
 
     pub const MemoryType = enum {
         ram,
@@ -4207,7 +4207,8 @@ pub const BenchmarkAccountsDB = struct {
         const slot_list_len = bench_args.slot_list_len;
         const total_n_accounts = n_accounts * slot_list_len;
 
-        const allocator = std.heap.c_allocator;
+        // make sure theres no leaks
+        const allocator = if (builtin.is_test) std.testing.allocator else std.heap.c_allocator;
         const disk_path = sig.TEST_DATA_DIR ++ "tmp/";
         std.fs.cwd().makeDir(disk_path) catch {};
         defer std.fs.cwd().deleteTreeMinStackSize(disk_path) catch {};
@@ -4245,6 +4246,10 @@ pub const BenchmarkAccountsDB = struct {
         const write_time = if (bench_args.accounts == .ram) timer_blk: {
             const n_accounts_init = bench_args.n_accounts_multiple * bench_args.n_accounts;
             const accounts = try allocator.alloc(Account, (total_n_accounts + n_accounts_init));
+            defer {
+                for (accounts[0..total_n_accounts]) |account| account.deinit(allocator);
+                allocator.free(accounts);
+            }
             for (0..(total_n_accounts + n_accounts_init)) |i| {
                 accounts[i] = try Account.initRandom(allocator, random, i % 1_000);
             }
@@ -4344,6 +4349,7 @@ pub const BenchmarkAccountsDB = struct {
         for (0..n_accounts) |i| {
             const pubkey = &pubkeys[i];
             const account = try accounts_db.getAccount(pubkey);
+            defer account.deinit(allocator);
             if (account.data.len != (i % 1_000)) {
                 std.debug.panic("account data len dnm {}: {} != {}", .{ i, account.data.len, (i % 1_000) });
             }
@@ -4356,3 +4362,8 @@ pub const BenchmarkAccountsDB = struct {
         };
     }
 };
+
+test "read/write benchmark" {
+    const arg = BenchmarkAccountsDB.args[0];
+    _ = try BenchmarkAccountsDB.readWriteAccounts(arg);
+}
