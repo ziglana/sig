@@ -3987,7 +3987,7 @@ pub const BenchmarkAccountsDBSnapshotLoad = struct {
 
 pub const BenchmarkAccountsDB = struct {
     pub const min_iterations = 1;
-    pub const max_iterations = 200;
+    pub const max_iterations = 5;
 
     pub const MemoryType = enum {
         ram,
@@ -4098,7 +4098,7 @@ pub const BenchmarkAccountsDB = struct {
         //     .accounts = .disk,
         //     .n_accounts_multiple = 2, // 1 mill accounts init
         //     .index = .ram,
-        //     .name = "3M accounts (3_slot - ram index - disk accounts)",
+        //     .name = "3M accounts (3_slot - ram index - disk accounts - 1million init)",
         // },
 
         // // testing disk indexes
