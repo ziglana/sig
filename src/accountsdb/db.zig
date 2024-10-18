@@ -28,7 +28,6 @@ const AllSnapshotFields = sig.accounts_db.snapshots.AllSnapshotFields;
 const SnapshotFiles = sig.accounts_db.snapshots.SnapshotFiles;
 const AccountIndex = sig.accounts_db.index.AccountIndex;
 const AccountRef = sig.accounts_db.index.AccountRef;
-const DiskMemoryAllocator = sig.utils.allocators.DiskMemoryAllocator;
 const RwMux = sig.sync.RwMux;
 const Logger = sig.trace.log.Logger;
 const StandardErrLogger = sig.trace.log.ChannelPrintLogger;
