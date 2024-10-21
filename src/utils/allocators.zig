@@ -54,6 +54,43 @@ pub fn RecycleFBA(config: struct {
             };
         }
 
+        pub fn ensureCapacity(self: *Self, n: u64) !void {
+            const current_buf = self.fba_allocator.buffer;
+            if (current_buf.len >= n) return;
+
+            if (config.thread_safe) self.mux.lock();
+            defer if (config.thread_safe) self.mux.unlock();
+
+            if (!self.bytes_allocator.resize(current_buf, n)) {
+                const current_usage = self.fba_allocator.end_index;
+                if (current_usage != 0) return error.ResizeUsedAllocatorNotSupported;
+
+                // NOTE: this can be expensive on memory (if two large bufs)
+                const new_buf = try self.bytes_allocator.alloc(u8, n);
+                self.fba_allocator.buffer = new_buf;
+                self.bytes_allocator.free(current_buf);
+            }
+        }
+
+        /// frees the unused space of a buf.
+        /// this is useful when a buf is initially overallocated and then resized.
+        pub fn freeUnusedSpace(self: *Self, valid_buf: []u8) void {
+            if (config.thread_safe) self.mux.lock();
+            defer if (config.thread_safe) self.mux.unlock();
+
+            for (self.records.items) |*record| {
+                if (record.buf == valid_buf.ptr) {
+                    const unused_len = record.len - valid_buf.len;
+                    if (unused_len > 0) {
+                        const unused_buf_ptr = valid_buf.ptr + valid_buf.len + 1;
+                        self.records.append(.{ .is_free = true, .buf = unused_buf_ptr, .len = unused_len }) catch {
+                            @panic("RecycleFBA.freeUnusedSpace: unable to append to records");
+                        };
+                    }
+                }
+            }
+        }
+
         /// creates a new file with size aligned to page_size and returns a pointer to it
         pub fn alloc(ctx: *anyopaque, n: usize, log2_align: u8, return_address: usize) ?[*]u8 {
             const self: *Self = @ptrCast(@alignCast(ctx));
@@ -73,6 +110,7 @@ pub fn RecycleFBA(config: struct {
                 {
                     if (item.is_free) {
                         item.is_free = false;
+                        // TODO/PERF: if this is an overallocation, we could split it
                         return item.buf;
                     } else {
                         // additional saftey check
@@ -177,7 +215,7 @@ pub fn RecycleFBA(config: struct {
 
         /// collapses adjacent free records into a single record
         pub fn tryCollapse(self: *Self) void {
-            var new_records = std.ArrayList(Record).init(self.bytes_allocator);
+            var new_records = std.ArrayList(Record).init(self.records.allocator);
             var last_was_free = false;
 
             for (self.records.items) |record| {
@@ -219,17 +257,17 @@ pub const DiskMemoryAllocator = struct {
     pub const MmapRatio = u16;
 
     /// Metadata stored at the end of each allocation.
-    const Metadata = extern struct {
+    pub const Metadata = extern struct {
         file_index: u32,
         mmap_size: usize align(4),
     };
 
     /// Returns the aligned size with enough space for `size` and `Metadata` at the end.
-    inline fn alignedFileSize(size: usize) usize {
+    pub inline fn alignedFileSize(size: usize) usize {
         return std.mem.alignForward(usize, size + @sizeOf(Metadata), std.mem.page_size);
     }
 
-    inline fn alignedMmapSize(
+    pub inline fn alignedMmapSize(
         /// Must be `= alignedFileSize(size)`.
         aligned_file_size: usize,
         mmap_ratio: MmapRatio,
@@ -253,7 +291,7 @@ pub const DiskMemoryAllocator = struct {
     /// mmaps at least enough memory to the file for `size`, the metadata, and optionally
     /// more based on the `mmap_ratio` field, in order to accommodate potential growth
     /// from `resize` calls.
-    fn alloc(ctx: *anyopaque, size: usize, log2_align: u8, return_address: usize) ?[*]u8 {
+    pub fn alloc(ctx: *anyopaque, size: usize, log2_align: u8, return_address: usize) ?[*]u8 {
         _ = return_address;
         const self: *Self = @ptrCast(@alignCast(ctx));
         std.debug.assert(self.mmap_ratio != 0);
@@ -301,7 +339,7 @@ pub const DiskMemoryAllocator = struct {
     }
 
     /// Resizes the allocation within the bounds of the mmap'd address space if possible.
-    fn resize(
+    pub fn resize(
         ctx: *anyopaque,
         buf: []u8,
         log2_align: u8,
@@ -347,7 +385,7 @@ pub const DiskMemoryAllocator = struct {
     }
 
     /// unmaps the memory and deletes the associated file.
-    fn free(ctx: *anyopaque, buf: []u8, log2_align: u8, return_address: usize) void {
+    pub fn free(ctx: *anyopaque, buf: []u8, log2_align: u8, return_address: usize) void {
         _ = return_address;
         const self: *Self = @ptrCast(@alignCast(ctx));
         std.debug.assert(self.mmap_ratio != 0);
@@ -371,15 +409,15 @@ pub const DiskMemoryAllocator = struct {
         };
     }
 
-    fn logFailure(self: Self, err: anyerror, file_name: []const u8) void {
+    pub fn logFailure(self: Self, err: anyerror, file_name: []const u8) void {
         self.logger.err().logf("Disk Memory Allocator error: {s}, filepath: {s}", .{
             @errorName(err), sig.utils.fmt.tryRealPath(self.dir, file_name),
         });
     }
 
-    const file_name_max_len = sig.utils.fmt.boundedLenValue("bin_{d}", .{std.math.maxInt(u32)});
-    inline fn fileNameBounded(file_index: u32) std.BoundedArray(u8, file_name_max_len) {
-        return sig.utils.fmt.boundedFmt("bin_{d}", .{file_index});
+    const file_name_max_len = sig.utils.fmt.boundedLenValue("memory_{d}", .{std.math.maxInt(u32)});
+    pub inline fn fileNameBounded(file_index: u32) std.BoundedArray(u8, file_name_max_len) {
+        return sig.utils.fmt.boundedFmt("memory_{d}", .{file_index});
     }
 };
 
@@ -444,6 +482,28 @@ pub const failing = struct {
         };
     }
 };
+
+test "recycle allocator: freeUnused" {
+    const backing_allocator = std.testing.allocator;
+    var allocator = try RecycleFBA(.{}).init(.{
+        .records_allocator = backing_allocator,
+        .bytes_allocator = backing_allocator,
+    }, 200);
+    defer allocator.deinit();
+
+    // alloc a slice of 100 bytes
+    const bytes = try allocator.allocator().alloc(u8, 100);
+    defer allocator.allocator().free(bytes);
+    // free the unused space
+    allocator.freeUnusedSpace(bytes[0..50]);
+
+    // this should be ok now
+    const bytes2 = try allocator.allocator().alloc(u8, 50);
+    defer allocator.allocator().free(bytes2);
+
+    const expected_ptr: [*]u8 = @alignCast(@ptrCast(&bytes[51]));
+    try std.testing.expectEqual(expected_ptr, bytes2.ptr);
+}
 
 test "recycle allocator: tryCollapse" {
     const bytes_allocator = std.testing.allocator;
@@ -559,8 +619,10 @@ test "disk allocator on arraylists" {
     };
     const dma = dma_state.allocator();
 
+    const file0 = "memory_0"; // DiskMemoryAllocator.fileNameBounded(0).constSlice();
+    const file1 = "memory_1"; // DiskMemoryAllocator.fileNameBounded(1).constSlice();
     {
-        try std.testing.expectError(error.FileNotFound, tmp_dir.access("bin_0", .{})); // this should not exist
+        try std.testing.expectError(error.FileNotFound, tmp_dir.access(file0, .{})); // this should not exist
 
         var disk_account_refs = try std.ArrayList(u8).initCapacity(dma, 1);
         defer disk_account_refs.deinit();
@@ -574,18 +636,18 @@ test "disk allocator on arraylists" {
         try std.testing.expectEqual(19, disk_account_refs.items[0]);
         try std.testing.expectEqual(21, disk_account_refs.items[1]);
 
-        try tmp_dir.access("bin_0", .{}); // this should exist
-        try std.testing.expectError(error.FileNotFound, tmp_dir.access("bin_1", .{})); // this should not exist
+        try tmp_dir.access(file0, .{}); // this should exist
+        try std.testing.expectError(error.FileNotFound, tmp_dir.access(file1, .{})); // this should not exist
 
         const array_ptr = try dma.create([4096]u8);
         defer dma.destroy(array_ptr);
         @memset(array_ptr, 0);
 
-        try tmp_dir.access("bin_1", .{}); // this should now exist
+        try tmp_dir.access(file1, .{}); // this should now exist
     }
 
-    try std.testing.expectError(error.FileNotFound, tmp_dir.access("bin_0", .{}));
-    try std.testing.expectError(error.FileNotFound, tmp_dir.access("bin_1", .{}));
+    try std.testing.expectError(error.FileNotFound, tmp_dir.access(file0, .{}));
+    try std.testing.expectError(error.FileNotFound, tmp_dir.access(file1, .{}));
 }
 
 test "disk allocator large realloc" {
