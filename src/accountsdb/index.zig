@@ -42,23 +42,16 @@ pub const AccountRef = struct {
 /// Analogous to [AccountsIndex](https://github.com/anza-xyz/agave/blob/a6b2283142192c5360ad0f53bec1eb4a9fb36154/accounts-db/src/accounts_index.rs#L644)
 pub const AccountIndex = struct {
     allocator: std.mem.Allocator,
-
     /// map from Pubkey -> AccountRefHead
     pubkey_ref_map: ShardedPubkeyRefMap,
     /// map from slot -> []AccountRef
     slot_reference_map: RwMux(SlotRefMap),
-
-    /// things for managing the AccountRef memory
-    reference_allocator: ReferenceAllocator,
     // this uses the reference_allocator to allocate a max number of references
-    // which can be re-used throughout the life of the program
-    reference_recycle_fba: *RecycleFBA(.{}),
+    // which can be re-used throughout the life of the program (ie, manages the state of free/used AccountRefs)
+    reference_allocator: *RecycleFBA(.{}),
+    // this is the allocator used to allocate bytes for the reference_allocator
+    underlying_reference_allocator: ReferenceAllocator,
 
-    // TODO(fastload): add field []AccountRef which is a single allocation of a large array of AccountRefs
-    // reads can access this directly
-    // TODO(fastload): recycle_fba.init([]AccountRef) - this will manage the state of free/used AccountRefs
-
-    // TODO(fastload): change to []AccountRef
     pub const SlotRefMap = std.AutoHashMap(Slot, []AccountRef);
     pub const AllocatorConfig = union(enum) {
         Ram: struct { allocator: std.mem.Allocator },
@@ -76,7 +69,7 @@ pub const AccountIndex = struct {
         number_of_shards: usize,
         max_account_references: u64,
     ) !Self {
-        const reference_allocator: ReferenceAllocator = switch (allocator_config) {
+        const underlying_reference_allocator: ReferenceAllocator = switch (allocator_config) {
             .Ram => |ram| blk: {
                 logger.info().logf("using ram memory for account index", .{});
                 break :blk .{ .ram = ram.allocator };
@@ -91,21 +84,17 @@ pub const AccountIndex = struct {
             },
         };
 
-        const reference_recycle_fba = try allocator.create(RecycleFBA(.{}));
-        reference_recycle_fba.* = try RecycleFBA(.{}).init(
-            .{
-                .records_allocator = allocator,
-                .bytes_allocator = reference_allocator.get(), // !
-            },
-            max_account_references * @sizeOf(AccountRef),
-        );
+        const reference_allocator = try RecycleFBA(.{}).create(.{ 
+            .records_allocator = allocator,
+            .bytes_allocator = underlying_reference_allocator.get(),
+        }, max_account_references * @sizeOf(AccountRef),);
 
         return .{
             .allocator = allocator,
-            .reference_allocator = reference_allocator,
             .pubkey_ref_map = try ShardedPubkeyRefMap.init(allocator, number_of_shards),
             .slot_reference_map = RwMux(SlotRefMap).init(SlotRefMap.init(allocator)),
-            .reference_recycle_fba = reference_recycle_fba,
+            .reference_allocator = reference_allocator,
+            .underlying_reference_allocator = underlying_reference_allocator,
         };
     }
 
@@ -119,10 +108,10 @@ pub const AccountIndex = struct {
         }
 
         if (free_memory) {
-            self.reference_recycle_fba.deinit();
-            self.allocator.destroy(self.reference_recycle_fba);
+            self.reference_allocator.deinit();
+            self.allocator.destroy(self.reference_allocator);
         }
-        self.reference_allocator.deinit();
+        self.underlying_reference_allocator.deinit();
     }
 
     pub const ReferenceParent = union(enum) {

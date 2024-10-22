@@ -38,6 +38,12 @@ pub fn RecycleFBA(config: struct {
             };
         }
 
+        pub fn create(allocator_config: AllocatorConfig, n_bytes: u64) !*Self {
+            const self = try allocator_config.records_allocator.create(Self);
+            self.* = try Self.init(allocator_config, n_bytes);
+            return self;
+        }
+
         pub fn deinit(self: *Self) void {
             self.bytes_allocator.free(self.fba_allocator.buffer);
             self.records.deinit();

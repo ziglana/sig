@@ -296,7 +296,7 @@ pub const AccountsDB = struct {
 
         // prealloc the references
         const n_accounts_estimate = n_account_files * accounts_per_file_estimate;
-        try self.account_index.reference_recycle_fba.ensureCapacity(n_accounts_estimate * @sizeOf(AccountRef));
+        try self.account_index.reference_allocator.ensureCapacity(n_accounts_estimate * @sizeOf(AccountRef));
 
         var timer = try sig.time.Timer.start();
         // short path
@@ -320,7 +320,6 @@ pub const AccountsDB = struct {
         }
 
         // setup the parallel indexing
-        const use_disk_index = self.config.use_disk_index;
         var loading_threads = try ArrayList(AccountsDB).initCapacity(
             self.allocator,
             n_parse_threads,
@@ -337,14 +336,11 @@ pub const AccountsDB = struct {
             );
             thread_db.logger = self.logger;
 
-            // set the reference allocator to the main index
-            per_thread_allocator.destroy(thread_db.account_index.reference_recycle_fba);
-            thread_db.account_index.reference_recycle_fba = self.account_index.reference_recycle_fba;
-
-            // set the disk allocator after init() doesnt create a new one
-            if (use_disk_index) {
-                thread_db.account_index.reference_allocator = self.account_index.reference_allocator;
-            }
+            // set the reference allocator to the main index:
+            // 1) delete the old ptr so we dont leak
+            per_thread_allocator.destroy(thread_db.account_index.reference_allocator);
+            // 2) set the new ptr to the main index
+            thread_db.account_index.reference_allocator = self.account_index.reference_allocator;
         }
         defer {
             // at this defer point, there are three memory components we care about
@@ -363,7 +359,6 @@ pub const AccountsDB = struct {
                 file_map.deinit(per_thread_allocator);
 
                 // NOTE: important `false` (ie, 1)
-                loading_thread.account_index.reference_allocator = .{ .ram = per_thread_allocator }; // dont destory the **disk** allocator (since its shared)
                 loading_thread.account_index.deinit(false);
 
                 const accounts_cache, var accounts_cache_lg = loading_thread.accounts_cache.writeWithLock();
@@ -452,7 +447,7 @@ pub const AccountsDB = struct {
         // allocate all the references in one shot with a wrapper allocator
         // without this large allocation, snapshot loading is very slow
         const n_accounts_estimate = n_account_files * accounts_per_file_est;
-        const reference_allocator = self.account_index.reference_recycle_fba; // TODO(fastload): fix
+        const reference_allocator = self.account_index.reference_allocator; // TODO(fastload): fix
         const references_buf = try reference_allocator.allocator().alloc(AccountRef, n_accounts_estimate);
 
         var timer = try sig.time.Timer.start();
@@ -1757,7 +1752,7 @@ pub const AccountsDB = struct {
             }
 
             // update the references
-            const new_reference_block = try self.account_index.reference_recycle_fba.allocator().alloc(AccountRef, accounts_alive_count);
+            const new_reference_block = try self.account_index.reference_allocator.allocator().alloc(AccountRef, accounts_alive_count);
             account_iter.reset();
             var offset_index: u64 = 0;
             for (is_alive_flags.items) |is_alive| {
@@ -1800,7 +1795,7 @@ pub const AccountsDB = struct {
 
                 // free the old reference memory
                 // NOTE: this is ok because nothing points to this old reference memory
-                self.account_index.reference_recycle_fba.allocator().free(slot_reference_map_entry.value_ptr.*);
+                self.account_index.reference_allocator.allocator().free(slot_reference_map_entry.value_ptr.*);
                 // point to new block
                 slot_reference_map_entry.value_ptr.* = new_reference_block;
             }
@@ -1862,7 +1857,7 @@ pub const AccountsDB = struct {
             var slot_ref_map, var lock = self.account_index.slot_reference_map.writeWithLock();
             defer lock.unlock();
             const r = slot_ref_map.fetchRemove(slot) orelse std.debug.panic("slot reference map not found for slot: {d}", .{slot});
-            self.account_index.reference_recycle_fba.allocator().free(r.value);
+            self.account_index.reference_allocator.allocator().free(r.value);
         }
 
         // free the account memory
@@ -2096,7 +2091,7 @@ pub const AccountsDB = struct {
         defer self.allocator.free(shard_counts);
         @memset(shard_counts, 0);
 
-        const reference_buf = try self.account_index.reference_recycle_fba.allocator().alloc(AccountRef, n_accounts);
+        const reference_buf = try self.account_index.reference_allocator.allocator().alloc(AccountRef, n_accounts);
         var references = std.ArrayListUnmanaged(AccountRef).initBuffer(reference_buf);
         try indexAndValidateAccountFile(
             account_file,
@@ -2221,7 +2216,7 @@ pub const AccountsDB = struct {
         try self.account_index.pubkey_ref_map.ensureTotalAdditionalCapacity(shard_counts);
 
         // index the accounts
-        const reference_buf = try self.account_index.reference_recycle_fba.allocator().alloc(AccountRef, accounts.len);
+        const reference_buf = try self.account_index.reference_allocator.allocator().alloc(AccountRef, accounts.len);
         var accounts_dead_count: u64 = 0;
         for (0..accounts.len) |i| {
             reference_buf[i] = AccountRef{
