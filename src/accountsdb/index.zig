@@ -50,7 +50,7 @@ pub const AccountIndex = struct {
 
     /// things for managing the AccountRef memory
     reference_allocator: ReferenceAllocator,
-    // this uses the reference_allocator to allocate a max number of references 
+    // this uses the reference_allocator to allocate a max number of references
     // which can be re-used throughout the life of the program
     reference_recycle_fba: *RecycleFBA(.{}),
 
@@ -90,7 +90,6 @@ pub const AccountIndex = struct {
                 break :blk .{ .disk = .{ .dma = disk_allocator, .ptr_allocator = allocator } };
             },
         };
-        _ = max_account_references; // TODO(fastload): use this
 
         const reference_recycle_fba = try allocator.create(RecycleFBA(.{}));
         reference_recycle_fba.* = try RecycleFBA(.{}).init(

@@ -99,7 +99,7 @@ pub fn RecycleFBA(config: struct {
             defer if (config.thread_safe) self.mux.unlock();
 
             if (n > self.fba_allocator.buffer.len) {
-                @panic("RecycleFBA.alloc: requested size too large, make the buffer larger");
+                std.debug.panic("RecycleFBA.alloc: requested size too large ({d} > {d}), make the buffer larger", .{ n, self.fba_allocator.buffer.len });
             }
 
             // check for a buf to recycle

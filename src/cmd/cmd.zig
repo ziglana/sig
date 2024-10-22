@@ -1429,6 +1429,7 @@ fn loadSnapshot(
             .use_disk_index = config.current.accounts_db.use_disk_index,
         },
         geyser_writer,
+        0, // TODO: config
     );
     errdefer result.accounts_db.deinit();
 

@@ -101,6 +101,7 @@ pub fn run(seed: u64, args: *std.process.ArgIterator) !void {
             // TODO: other things we can fuzz (number of shards, ...)
         },
         null,
+        100_000, // TODO: config
     );
     defer accounts_db.deinit();
 
@@ -317,10 +318,10 @@ pub fn run(seed: u64, args: *std.process.ArgIterator) !void {
             );
             defer snapshot_fields.deinit(allocator);
 
-            var alt_accounts_db = try AccountsDB.init(allocator, .noop, alternative_snapshot_dir, accounts_db.config, null);
+            var alt_accounts_db = try AccountsDB.init(allocator, .noop, alternative_snapshot_dir, accounts_db.config, null, 0);
             defer alt_accounts_db.deinit();
 
-            _ = try alt_accounts_db.loadWithDefaults(allocator, &snapshot_fields, 1, true, 1_500);
+            _ = try alt_accounts_db.loadWithDefaults(allocator, &snapshot_fields, 1, true, 500);
             const maybe_inc_slot = if (snapshot_files.incremental_snapshot) |inc| inc.slot else null;
             logger.info().logf("loaded and validated snapshot at slot: {} (and inc snapshot @ slot {any})", .{ snapshot_info.slot, maybe_inc_slot });
         }

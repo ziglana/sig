@@ -142,6 +142,9 @@ pub const AccountsDB = struct {
         snapshot_dir: std.fs.Dir,
         config: InitConfig,
         geyser_writer: ?*GeyserWriter,
+        // max number of references to preallocate, if you load from a snapshot you can set this to
+        // zero and it will be preallocated based on the number of accounts estimated per account file
+        max_n_references: u64,
     ) !Self {
         // init index
         const index_config: AccountIndex.AllocatorConfig = if (config.use_disk_index)
@@ -153,7 +156,7 @@ pub const AccountsDB = struct {
             logger,
             index_config,
             config.number_of_index_shards,
-            1_000, // TODO(fastload): make config value
+            max_n_references,
         );
         errdefer account_index.deinit(true);
 
@@ -330,10 +333,13 @@ pub const AccountsDB = struct {
                 self.snapshot_dir,
                 self.config,
                 self.geyser_writer,
+                0, // reference memory is used from the main index
             );
             thread_db.logger = self.logger;
 
-            // TODO(fastload): add recycle_fba_allocator functionality
+            // set the reference allocator to the main index
+            per_thread_allocator.destroy(thread_db.account_index.reference_recycle_fba);
+            thread_db.account_index.reference_recycle_fba = self.account_index.reference_recycle_fba;
 
             // set the disk allocator after init() doesnt create a new one
             if (use_disk_index) {
@@ -3039,7 +3045,7 @@ fn testWriteSnapshotIncremental(
     var snap_fields = try SnapshotFields.decodeFromBincode(allocator, manifest_file.reader());
     defer snap_fields.deinit(allocator);
 
-    _ = try accounts_db.loadFromSnapshot(snap_fields.accounts_db_fields, 1, allocator, 1_500);
+    _ = try accounts_db.loadFromSnapshot(snap_fields.accounts_db_fields, 1, allocator, 500);
 
     const snapshot_gen_info = try accounts_db.generateIncrementalSnapshot(.{
         .target_slot = slot,
@@ -3090,10 +3096,17 @@ test "testWriteSnapshot" {
         try parallelUnpackZstdTarBall(allocator, .noop, archive_file, tmp_snap_dir, 4, false);
     }
 
-    var accounts_db = try AccountsDB.init(allocator, .noop, tmp_snap_dir, .{
-        .number_of_index_shards = ACCOUNT_INDEX_SHARDS,
-        .use_disk_index = false,
-    }, null);
+    var accounts_db = try AccountsDB.init(
+        allocator,
+        .noop,
+        tmp_snap_dir,
+        .{
+            .number_of_index_shards = ACCOUNT_INDEX_SHARDS,
+            .use_disk_index = false,
+        },
+        null,
+        100_000,
+    );
     defer accounts_db.deinit();
 
     try testWriteSnapshotFull(
@@ -3161,7 +3174,7 @@ fn loadTestAccountsDB(allocator: std.mem.Allocator, use_disk: bool, n_threads: u
     var accounts_db = try AccountsDB.init(allocator, logger, dir, .{
         .number_of_index_shards = 4,
         .use_disk_index = use_disk,
-    }, null);
+    }, null, 10_000);
     errdefer accounts_db.deinit();
 
     _ = try accounts_db.loadFromSnapshot(snapshot.accounts_db_fields, n_threads, allocator, 500);
@@ -3230,6 +3243,7 @@ test "geyser stream on load" {
             .use_disk_index = false,
         },
         geyser_writer,
+        0,
     );
     defer {
         accounts_db.deinit();
@@ -3240,7 +3254,7 @@ test "geyser stream on load" {
         snapshot.accounts_db_fields,
         1,
         allocator,
-        1_500,
+        300,
     );
 }
 
@@ -3398,7 +3412,7 @@ test "flushing slots works" {
     var accounts_db = try AccountsDB.init(allocator, logger, snapshot_dir, .{
         .number_of_index_shards = 4,
         .use_disk_index = false,
-    }, null);
+    }, null, 1_000);
     defer accounts_db.deinit();
 
     var prng = std.rand.DefaultPrng.init(19);
@@ -3449,7 +3463,7 @@ test "purge accounts in cache works" {
     var accounts_db = try AccountsDB.init(allocator, logger, snapshot_dir, .{
         .number_of_index_shards = 4,
         .use_disk_index = false,
-    }, null);
+    }, null, 1_000);
     defer accounts_db.deinit();
 
     var prng = std.rand.DefaultPrng.init(19);
@@ -3506,7 +3520,7 @@ test "clean to shrink account file works with zero-lamports" {
     var accounts_db = try AccountsDB.init(allocator, logger, snapshot_dir, .{
         .number_of_index_shards = 4,
         .use_disk_index = false,
-    }, null);
+    }, null, 1_000);
     defer accounts_db.deinit();
 
     var prng = std.rand.DefaultPrng.init(19);
@@ -3582,7 +3596,7 @@ test "clean to shrink account file works" {
     var accounts_db = try AccountsDB.init(allocator, logger, snapshot_dir, .{
         .number_of_index_shards = 4,
         .use_disk_index = false,
-    }, null);
+    }, null, 1_000);
     defer accounts_db.deinit();
 
     var prng = std.rand.DefaultPrng.init(19);
@@ -3650,7 +3664,7 @@ test "full clean account file works" {
     var accounts_db = try AccountsDB.init(allocator, logger, snapshot_dir, .{
         .number_of_index_shards = 4,
         .use_disk_index = false,
-    }, null);
+    }, null, 1_000);
     defer accounts_db.deinit();
 
     var prng = std.rand.DefaultPrng.init(19);
@@ -3735,7 +3749,7 @@ test "shrink account file works" {
     var accounts_db = try AccountsDB.init(allocator, logger, snapshot_dir, .{
         .number_of_index_shards = 4,
         .use_disk_index = false,
-    }, null);
+    }, null, 1_000);
     defer accounts_db.deinit();
 
     var prng = std.rand.DefaultPrng.init(19);
@@ -3947,7 +3961,7 @@ pub const BenchmarkAccountsDBSnapshotLoad = struct {
         var accounts_db = try AccountsDB.init(allocator, logger, snapshot_dir, .{
             .number_of_index_shards = 32,
             .use_disk_index = bench_args.use_disk,
-        }, null);
+        }, null, 1_000);
         defer accounts_db.deinit();
 
         const duration = try accounts_db.loadFromSnapshot(
@@ -4127,7 +4141,7 @@ pub const BenchmarkAccountsDB = struct {
         var accounts_db: AccountsDB = try AccountsDB.init(allocator, logger, snapshot_dir, .{
             .number_of_index_shards = ACCOUNT_INDEX_SHARDS,
             .use_disk_index = bench_args.index == .disk,
-        }, null);
+        }, null, total_n_accounts);
         defer accounts_db.deinit();
 
         var prng = std.Random.DefaultPrng.init(19);
