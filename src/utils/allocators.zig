@@ -60,43 +60,6 @@ pub fn RecycleFBA(config: struct {
             };
         }
 
-        pub fn ensureCapacity(self: *Self, n: u64) !void {
-            const current_buf = self.fba_allocator.buffer;
-            if (current_buf.len >= n) return;
-
-            if (config.thread_safe) self.mux.lock();
-            defer if (config.thread_safe) self.mux.unlock();
-
-            if (!self.bytes_allocator.resize(current_buf, n)) {
-                const current_usage = self.fba_allocator.end_index;
-                if (current_usage != 0) return error.ResizeUsedAllocatorNotSupported;
-
-                // NOTE: this can be expensive on memory (if two large bufs)
-                const new_buf = try self.bytes_allocator.alloc(u8, n);
-                self.fba_allocator.buffer = new_buf;
-                self.bytes_allocator.free(current_buf);
-            }
-        }
-
-        /// frees the unused space of a buf.
-        /// this is useful when a buf is initially overallocated and then resized.
-        pub fn freeUnusedSpace(self: *Self, valid_buf: []u8) void {
-            if (config.thread_safe) self.mux.lock();
-            defer if (config.thread_safe) self.mux.unlock();
-
-            for (self.records.items) |*record| {
-                if (record.buf == valid_buf.ptr) {
-                    const unused_len = record.len - valid_buf.len;
-                    if (unused_len > 0) {
-                        const unused_buf_ptr = valid_buf.ptr + valid_buf.len + 1;
-                        self.records.append(.{ .is_free = true, .buf = unused_buf_ptr, .len = unused_len }) catch {
-                            @panic("RecycleFBA.freeUnusedSpace: unable to append to records");
-                        };
-                    }
-                }
-            }
-        }
-
         /// creates a new file with size aligned to page_size and returns a pointer to it
         pub fn alloc(ctx: *anyopaque, n: usize, log2_align: u8, return_address: usize) ?[*]u8 {
             const self: *Self = @ptrCast(@alignCast(ctx));
@@ -131,7 +94,7 @@ pub fn RecycleFBA(config: struct {
                 if (!is_possible_to_recycle) {
                     // not enough memory to allocate and no possible recycles will be perma stuck
                     // TODO(x19): loop this and have a comptime limit?
-                    self.tryCollapse();
+                    self.collapse();
                     if (!self.isPossibleToAllocate(n, log2_align)) {
                         @panic("RecycleFBA.alloc: no possible recycles and not enough memory to allocate");
                     }
@@ -200,6 +163,43 @@ pub fn RecycleFBA(config: struct {
             return false;
         }
 
+        pub fn ensureCapacity(self: *Self, n: u64) !void {
+            const current_buf = self.fba_allocator.buffer;
+            if (current_buf.len >= n) return;
+
+            if (config.thread_safe) self.mux.lock();
+            defer if (config.thread_safe) self.mux.unlock();
+
+            if (!self.bytes_allocator.resize(current_buf, n)) {
+                const current_usage = self.fba_allocator.end_index;
+                if (current_usage != 0) return error.ResizeUsedAllocatorNotSupported;
+
+                // NOTE: this can be expensive on memory (if two large bufs)
+                const new_buf = try self.bytes_allocator.alloc(u8, n);
+                self.fba_allocator.buffer = new_buf;
+                self.bytes_allocator.free(current_buf);
+            }
+        }
+
+        /// frees the unused space of a buf.
+        /// this is useful when a buf is initially overallocated and then resized.
+        pub fn freeUnusedSpace(self: *Self, valid_buf: []u8) void {
+            if (config.thread_safe) self.mux.lock();
+            defer if (config.thread_safe) self.mux.unlock();
+
+            for (self.records.items) |*record| {
+                if (record.buf == valid_buf.ptr) {
+                    const unused_len = record.len - valid_buf.len;
+                    if (unused_len > 0) {
+                        const unused_buf_ptr = valid_buf.ptr + valid_buf.len + 1;
+                        self.records.append(.{ .is_free = true, .buf = unused_buf_ptr, .len = unused_len }) catch {
+                            @panic("RecycleFBA.freeUnusedSpace: unable to append to records");
+                        };
+                    }
+                }
+            }
+        }
+
         pub fn isPossibleToAllocate(self: *Self, n: u64, log2_align: u8) bool {
             // direct alloc check
             const fba_size_left = self.fba_allocator.buffer.len - self.fba_allocator.end_index;
@@ -220,7 +220,7 @@ pub fn RecycleFBA(config: struct {
         }
 
         /// collapses adjacent free records into a single record
-        pub fn tryCollapse(self: *Self) void {
+        pub fn collapse(self: *Self) void {
             var new_records = std.ArrayList(Record).init(self.records.allocator);
             var last_was_free = false;
 
@@ -231,12 +231,12 @@ pub fn RecycleFBA(config: struct {
                     } else {
                         last_was_free = true;
                         new_records.append(record) catch {
-                            @panic("RecycleFBA.tryCollapse: unable to append to new_records");
+                            @panic("RecycleFBA.collapse: unable to append to new_records");
                         };
                     }
                 } else {
                     new_records.append(record) catch {
-                        @panic("RecycleFBA.tryCollapse: unable to append to new_records");
+                        @panic("RecycleFBA.collapse: unable to append to new_records");
                     };
                     last_was_free = false;
                 }
@@ -511,7 +511,7 @@ test "recycle allocator: freeUnused" {
     try std.testing.expectEqual(expected_ptr, bytes2.ptr);
 }
 
-test "recycle allocator: tryCollapse" {
+test "recycle allocator: collapse" {
     const bytes_allocator = std.testing.allocator;
     var allocator = try RecycleFBA(.{}).init(.{
         .records_allocator = bytes_allocator,
@@ -528,7 +528,7 @@ test "recycle allocator: tryCollapse" {
     allocator.allocator().free(bytes);
     allocator.allocator().free(bytes2);
 
-    allocator.tryCollapse();
+    allocator.collapse();
     // this should be ok now
     const bytes3 = try allocator.allocator().alloc(u8, 150);
     allocator.allocator().free(bytes3);
