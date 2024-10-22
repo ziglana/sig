@@ -98,10 +98,10 @@ pub fn run(seed: u64, args: *std.process.ArgIterator) !void {
         .{
             .number_of_index_shards = sig.accounts_db.db.ACCOUNT_INDEX_SHARDS,
             .use_disk_index = use_disk,
+            .max_number_of_accounts = 1_000_000,
             // TODO: other things we can fuzz (number of shards, ...)
         },
         null,
-        100_000, // TODO: config
     );
     defer accounts_db.deinit();
 
@@ -318,7 +318,7 @@ pub fn run(seed: u64, args: *std.process.ArgIterator) !void {
             );
             defer snapshot_fields.deinit(allocator);
 
-            var alt_accounts_db = try AccountsDB.init(allocator, .noop, alternative_snapshot_dir, accounts_db.config, null, 0);
+            var alt_accounts_db = try AccountsDB.init(allocator, .noop, alternative_snapshot_dir, accounts_db.config, null);
             defer alt_accounts_db.deinit();
 
             _ = try alt_accounts_db.loadWithDefaults(allocator, &snapshot_fields, 1, true, 500);
