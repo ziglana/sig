@@ -291,7 +291,7 @@ pub const AccountsDB = struct {
             bhs.accumulate(snapshot_manifest.bank_hash_info.stats);
         }
 
-        // prealloc the references 
+        // prealloc the references
         const n_accounts_estimate = n_account_files * accounts_per_file_estimate;
         try self.account_index.reference_recycle_fba.ensureCapacity(n_accounts_estimate * @sizeOf(AccountRef));
 
@@ -525,7 +525,7 @@ pub const AccountsDB = struct {
 
             // track slice of references per slot
             n_accounts_total += n_accounts_this_slot;
-            slot_reference_map.putAssumeCapacityNoClobber(slot, slot_references.items[0..n_accounts_this_slot]);           
+            slot_reference_map.putAssumeCapacityNoClobber(slot, slot_references.items[0..n_accounts_this_slot]);
 
             // write to geyser
             if (geyser_is_enabled) {
@@ -1852,9 +1852,9 @@ pub const AccountsDB = struct {
         }
 
         // free the reference memory
-        { 
+        {
             var slot_ref_map, var lock = self.account_index.slot_reference_map.writeWithLock();
-            defer lock.unlock(); 
+            defer lock.unlock();
             const r = slot_ref_map.fetchRemove(slot) orelse std.debug.panic("slot reference map not found for slot: {d}", .{slot});
             self.account_index.reference_recycle_fba.allocator().free(r.value);
         }
@@ -2103,7 +2103,7 @@ pub const AccountsDB = struct {
         );
 
         // track the slot's references
-        { 
+        {
             const slot_ref_map, var lock = self.account_index.slot_reference_map.writeWithLock();
             defer lock.unlock();
             try slot_ref_map.putNoClobber(account_file.slot, reference_buf);
@@ -2236,7 +2236,7 @@ pub const AccountsDB = struct {
         }
 
         // track the slot's references
-        { 
+        {
             const slot_ref_map, var lock = self.account_index.slot_reference_map.writeWithLock();
             defer lock.unlock();
             try slot_ref_map.putNoClobber(slot, reference_buf);
@@ -2852,7 +2852,7 @@ pub fn indexAndValidateAccountFile(
 
         if (account_refs.capacity == account_refs.items.len) {
             return error.OutOfReferenceMemory;
-        }                
+        }
         account_refs.appendAssumeCapacity(.{
             .pubkey = account.store_info.pubkey,
             .slot = accounts_file.slot,
