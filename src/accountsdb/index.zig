@@ -84,10 +84,13 @@ pub const AccountIndex = struct {
             },
         };
 
-        const reference_allocator = try RecycleFBA(.{}).create(.{ 
-            .records_allocator = allocator,
-            .bytes_allocator = underlying_reference_allocator.get(),
-        }, max_account_references * @sizeOf(AccountRef),);
+        const reference_allocator = try RecycleFBA(.{}).create(
+            .{
+                .records_allocator = allocator,
+                .bytes_allocator = underlying_reference_allocator.get(),
+            },
+            max_account_references * @sizeOf(AccountRef),
+        );
 
         return .{
             .allocator = allocator,
